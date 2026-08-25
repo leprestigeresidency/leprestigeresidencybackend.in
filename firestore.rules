@@ -1,0 +1,132 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (request.auth.token.role == 'admin' || request.auth.token.admin == true);
+    }
+
+    function isStaff() {
+      return isAuthenticated() && (request.auth.token.role == 'staff' || request.auth.token.staff == true || isAdmin());
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isOwnerEmail(email) {
+      return isAuthenticated() && request.auth.token.email == email;
+    }
+
+    match /rooms/{roomId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /room_categories/{categoryId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /branches/{branchId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /offers/{offerId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /gallery/{imageId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /news/{newsId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /faq/{faqId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /facilities/{facilityId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /amenities/{amenityId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if resource.data.approved == true || isStaff();
+      allow create: if isAuthenticated();
+      allow update, delete: if isStaff();
+    }
+
+    match /bookings/{bookingId} {
+      allow read: if isStaff() || isOwner(resource.data.customerId) || isOwnerEmail(resource.data.email);
+      allow create: if isAuthenticated();
+      allow update: if isStaff() || (isOwner(resource.data.customerId) && request.resource.data.bookingStatus == 'cancelled');
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if isStaff() || isOwner(resource.data.customerId);
+      allow write: if isStaff();
+    }
+
+    match /customers/{customerId} {
+      allow read, update: if isOwner(customerId) || isStaff();
+      allow create: if isAuthenticated();
+      allow delete: if isAdmin();
+    }
+
+    match /admins/{adminId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /staff/{staffId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /contact_messages/{messageId} {
+      allow create: if true;
+      allow read, update, delete: if isStaff();
+    }
+
+    match /newsletter/{subscriptionId} {
+      allow create: if true;
+      allow read, update, delete: if isStaff();
+    }
+
+    match /coupons/{couponId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isStaff() || isOwner(resource.data.recipientId);
+      allow write: if isStaff();
+    }
+
+    match /settings/{settingId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

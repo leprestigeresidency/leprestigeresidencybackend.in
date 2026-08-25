@@ -1,0 +1,35 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "DOM"],
+    "declaration": true,
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "baseUrl": ".",
+    "paths": {
+      "firebase/app": ["node_modules/firebase/app"],
+      "firebase/auth": ["node_modules/firebase/auth"],
+      "firebase/firestore": ["node_modules/firebase/firestore"],
+      "firebase/storage": ["node_modules/firebase/storage"]
+    }
+  },
+  "include": [
+    "firebase/**/*",
+    "services/**/*",
+    "schemas/**/*",
+    "utils/**/*",
+    "tests/**/*"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "functions"
+  ]
+}
