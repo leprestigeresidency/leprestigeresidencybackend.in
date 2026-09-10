@@ -81,10 +81,6 @@ service cloud.firestore {
       allow delete: if isAdmin();
     }
 
-    match /payments/{paymentId} {
-      allow read: if isStaff() || isOwner(resource.data.customerId);
-      allow write: if isStaff();
-    }
 
     match /customers/{customerId} {
       allow read, update: if isOwner(customerId) || isStaff();

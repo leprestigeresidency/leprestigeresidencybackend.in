@@ -15,15 +15,13 @@ import {
 } from '../firebase/errors';
 
 export class BookingService {
-  /**
-   * Check room availability for given dates
-   */
   static async checkRoomAvailability(
-    roomId: string,
+    roomType: string,
+    branch: string,
     checkIn: string,
     checkOut: string,
     excludeBookingId?: string
-  ): Promise<boolean> {
+  ): Promise<{ available: boolean, availableCount: number }> {
     if (checkOut <= checkIn) {
       throw new ValidationError('Check-out date must be strictly after check-in date.');
     }
@@ -33,29 +31,40 @@ export class BookingService {
       throw new ValidationError('Check-in date cannot be in the past.');
     }
 
-    // Ensure room exists and is marked available
-    const room = await RoomService.getRoomById(roomId);
-    if (!room.available || room.status !== 'available') {
-      return false;
+    // 1. Find all active physical rooms of this type/branch
+    const roomsSnap = await adminFirestore
+      .collection(COLLECTIONS.ROOMS)
+      .where('branchId', '==', branch)
+      .where('type', '==', roomType)
+      .where('active', '==', true)
+      .get();
+
+    if (roomsSnap.empty) {
+      return { available: false, availableCount: 0 };
     }
 
-    // Query active bookings for this room
-    const snap = await adminFirestore
+    const physicalRooms = roomsSnap.docs.map(d => ({ id: d.id, ...d.data() as any }));
+
+    // 2. Query active bookings matching these criteria
+    const bookingsSnap = await adminFirestore
       .collection(COLLECTIONS.BOOKINGS)
-      .where('roomId', '==', roomId)
+      .where('branchId', '==', branch)
+      .where('roomType', '==', roomType) // Ensure bookings store roomType
       .where('bookingStatus', 'in', ['pending', 'confirmed', 'checked_in'])
       .get();
 
-    for (const doc of snap.docs) {
-      if (excludeBookingId && doc.id === excludeBookingId) continue;
-      const existing = doc.data() as Booking;
-
-      if (doDateRangesOverlap(checkIn, checkOut, existing.checkIn, existing.checkOut)) {
-        return false; // Overlap found
+    // 3. Filter overlapping bookings
+    const overlappingBookings = bookingsSnap.docs.map(doc => {
+      if (excludeBookingId && doc.id === excludeBookingId) return null;
+      const b = doc.data() as any;
+      if (doDateRangesOverlap(checkIn, checkOut, b.checkIn, b.checkOut)) {
+        return b;
       }
-    }
+      return null;
+    }).filter(b => b !== null);
 
-    return true;
+    const availableCount = physicalRooms.length - overlappingBookings.length;
+    return { available: availableCount > 0, availableCount: Math.max(0, availableCount) };
   }
 
   /**
@@ -71,50 +80,55 @@ export class BookingService {
 
     // Execute in transaction for concurrency safety
     return await adminFirestore.runTransaction(async (transaction) => {
-      // 1. Fetch Room inside transaction
-      const roomRef = adminFirestore.collection(COLLECTIONS.ROOMS).doc(validated.roomId);
-      const roomDoc = await transaction.get(roomRef);
-
-      if (!roomDoc.exists) {
-        throw new NotFoundError(`Room with ID ${validated.roomId}`);
+      // 1. Fetch physical rooms of this type
+      const roomsQuery = adminFirestore.collection(COLLECTIONS.ROOMS)
+        .where('type', '==', validated.roomType)
+        .where('branchId', '==', validated.branch)
+        .where('active', '==', true);
+      
+      const roomsSnap = await transaction.get(roomsQuery);
+      if (roomsSnap.empty) {
+        throw new NotFoundError(`Room type ${validated.roomType} in ${validated.branch}`);
       }
 
-      const room = roomDoc.data() as any;
-      if (!room.available || room.status !== 'available') {
-        throw new RoomUnavailableError('Room is currently unavailable or under maintenance.');
-      }
-
-      // Check capacity
-      if (validated.adults > room.adults) {
-        throw new ValidationError(`Adult count exceeds room capacity of ${room.adults}.`);
-      }
+      const physicalRooms = roomsSnap.docs.map(d => ({ id: d.id, ref: d.ref, data: d.data() as any }));
 
       // 2. Check overlapping active bookings
       const bookingsQuery = adminFirestore
         .collection(COLLECTIONS.BOOKINGS)
-        .where('roomId', '==', validated.roomId)
+        .where('branchId', '==', validated.branch)
+        .where('roomType', '==', validated.roomType)
         .where('bookingStatus', 'in', ['pending', 'confirmed', 'checked_in']);
 
       const existingSnap = await transaction.get(bookingsQuery);
+      let overlappingCount = 0;
+      
+      const bookedRoomIds = new Set<string>();
 
       for (const doc of existingSnap.docs) {
-        const existing = doc.data() as Booking;
-        if (
-          doDateRangesOverlap(
-            validated.checkIn,
-            validated.checkOut,
-            existing.checkIn,
-            existing.checkOut
-          )
-        ) {
-          throw new RoomUnavailableError(
-            'Room is already booked for the selected dates. Please choose different dates or another room.'
-          );
+        const existing = doc.data() as any;
+        if (doDateRangesOverlap(validated.checkIn, validated.checkOut, existing.checkIn, existing.checkOut)) {
+          overlappingCount++;
+          if (existing.roomId) bookedRoomIds.add(existing.roomId);
         }
       }
+      
+      if (overlappingCount >= physicalRooms.length) {
+        throw new RoomUnavailableError(
+          'Room is already fully booked for the selected dates. Please choose different dates or another room type.'
+        );
+      }
+
+      // Assign an available specific physical room
+      const availableRoom = physicalRooms.find(r => !bookedRoomIds.has(r.id));
+      if (!availableRoom) {
+         throw new RoomUnavailableError('Unexpected error: No specific physical room available.');
+      }
+
+      const room = availableRoom.data;
 
       // 3. SERVER-SIDE PRICE CALCULATION (Never trust frontend amounts!)
-      const roomRate = room.price;
+      const roomRate = room.basePrice || 3000;
       const subtotal = roomRate * nights;
 
       let discount = 0;
@@ -134,16 +148,19 @@ export class BookingService {
       const bookingId = generateBookingId();
       const now = new Date().toISOString();
 
+      const bookingStatus = "confirmed";
+
       const bookingData: Booking = {
         id: bookingRef.id,
         bookingId,
         customerId: validated.customerId,
-        guestName: validated.guestName,
-        email: validated.email.toLowerCase(),
-        phone: validated.phone,
-        roomId: validated.roomId,
+        guestName: validated.guestName || "Guest",
+        email: (validated.email || "guest@example.com").toLowerCase(),
+        phone: validated.phone || "9876543210",
+        roomId: availableRoom.id,
+        roomType: validated.roomType,
         roomName: room.name,
-        branchId: validated.branchId,
+        branchId: validated.branch,
         checkIn: validated.checkIn,
         checkOut: validated.checkOut,
         adults: validated.adults,
@@ -157,21 +174,16 @@ export class BookingService {
         tax,
         gst,
         total,
-        paymentStatus: 'pending',
-        bookingStatus: 'pending',
+        bookingStatus,
         createdAt: now,
         updatedAt: now
       };
 
-      transaction.set(bookingRef, bookingData);
+      transaction.set(bookingRef, bookingData as any);
 
-      // Update the room to be occupied immediately to lock it in real-time
-      transaction.update(roomRef, {
-        status: 'occupied',
-        available: false,
-        updatedAt: now
-      });
-
+      // We do NOT mark the physical room as 'unavailable' unless it's a permanent status update, 
+      // because rooms can have multiple non-overlapping bookings.
+      
       return bookingData;
     });
   }
@@ -209,23 +221,15 @@ export class BookingService {
    */
   static async updateBookingStatus(
     id: string,
-    status: BookingStatus,
-    razorpayInfo?: { razorpayOrderId?: string; razorpayPaymentId?: string; invoiceUrl?: string }
+    status: BookingStatus
   ): Promise<Booking> {
     const booking = await this.getBookingById(id);
     const now = new Date().toISOString();
 
     const updates: Partial<Booking> = {
       bookingStatus: status,
-      updatedAt: now,
-      ...(razorpayInfo?.razorpayOrderId ? { razorpayOrderId: razorpayInfo.razorpayOrderId } : {}),
-      ...(razorpayInfo?.razorpayPaymentId ? { razorpayPaymentId: razorpayInfo.razorpayPaymentId } : {}),
-      ...(razorpayInfo?.invoiceUrl ? { invoiceUrl: razorpayInfo.invoiceUrl } : {})
+      updatedAt: now
     };
-
-    if (status === 'confirmed' && booking.paymentStatus === 'pending') {
-      updates.paymentStatus = 'paid';
-    }
 
     await adminFirestore.collection(COLLECTIONS.BOOKINGS).doc(id).update(updates);
     return { ...booking, ...updates };

@@ -6,7 +6,7 @@ export const COLLECTIONS = {
   ROOM_CATEGORIES: 'room_categories',
   BRANCHES: 'branches',
   BOOKINGS: 'bookings',
-  PAYMENTS: 'payments',
+
   OFFERS: 'offers',
   GALLERY: 'gallery',
   REVIEWS: 'reviews',

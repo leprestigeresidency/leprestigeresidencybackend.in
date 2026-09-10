@@ -5,8 +5,7 @@ export enum ErrorCode {
   NOT_FOUND = 'NOT_FOUND',
   ROOM_UNAVAILABLE = 'ROOM_UNAVAILABLE',
   BOOKING_FAILED = 'BOOKING_FAILED',
-  PAYMENT_FAILED = 'PAYMENT_FAILED',
-  PAYMENT_VERIFICATION_FAILED = 'PAYMENT_VERIFICATION_FAILED',
+
   REFUND_FAILED = 'REFUND_FAILED',
   INTERNAL_SERVER_ERROR = 'INTERNAL_SERVER_ERROR'
 }
@@ -64,18 +63,6 @@ export class RoomUnavailableError extends AppError {
 export class BookingFailedError extends AppError {
   constructor(message: string, details?: Record<string, any>) {
     super(ErrorCode.BOOKING_FAILED, message, 400, details);
-  }
-}
-
-export class PaymentFailedError extends AppError {
-  constructor(message: string, details?: Record<string, any>) {
-    super(ErrorCode.PAYMENT_FAILED, message, 400, details);
-  }
-}
-
-export class PaymentVerificationFailedError extends AppError {
-  constructor(message: string = 'Payment signature verification failed.') {
-    super(ErrorCode.PAYMENT_VERIFICATION_FAILED, message, 400);
   }
 }
 

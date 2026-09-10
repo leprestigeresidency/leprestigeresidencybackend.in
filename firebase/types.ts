@@ -8,14 +8,7 @@ export type BookingStatus =
   | 'cancelled'
   | 'refunded';
 
-export type PaymentStatus =
-  | 'pending'
-  | 'paid'
-  | 'failed'
-  | 'refunded'
-  | 'authorized'
-  | 'captured'
-  | 'created';
+
 
 export type RoomStatus = 'available' | 'occupied' | 'maintenance';
 
@@ -125,6 +118,7 @@ export interface Booking {
   email: string;
   phone: string;
   roomId: string;
+  roomType?: string;
   roomName: string;
   branchId: string;
   checkIn: string; // YYYY-MM-DD
@@ -140,31 +134,12 @@ export interface Booking {
   tax: number;
   gst: number;
   total: number;
-  paymentStatus: PaymentStatus;
   bookingStatus: BookingStatus;
-  razorpayOrderId?: string;
-  razorpayPaymentId?: string;
-  invoiceUrl?: string;
   createdAt: string;
   updatedAt: string;
 }
 
-export interface Payment {
-  id: string;
-  paymentId: string;
-  bookingId: string;
-  customerId?: string;
-  razorpayOrderId: string;
-  razorpayPaymentId?: string;
-  signature?: string;
-  amount: number; // in INR (or lowest currency unit)
-  currency: string;
-  status: PaymentStatus;
-  paymentMethod?: string;
-  errorReason?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+
 
 export interface Offer {
   id: string;
@@ -277,7 +252,7 @@ export interface AppNotification {
   recipientEmail?: string;
   title: string;
   body: string;
-  type: 'booking' | 'payment' | 'offer' | 'system';
+  type: 'booking' | 'offer' | 'system';
   read: boolean;
   metadata?: Record<string, any>;
   createdAt: string;
