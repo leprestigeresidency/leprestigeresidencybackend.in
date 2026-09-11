@@ -121,6 +121,12 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // NEW RULES for landing_leads
+    match /landing_leads/{leadId} {
+      allow read, write, delete: if isAdmin() || isStaff();
+      allow create: if true; 
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
