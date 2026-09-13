@@ -28,6 +28,11 @@ service cloud.firestore {
       allow write: if isAdmin() || isStaff();
     }
 
+    match /room_prices/{priceId} {
+      allow read: if true;
+      allow write: if isAdmin() || isStaff();
+    }
+
     match /room_categories/{categoryId} {
       allow read: if true;
       allow write: if isAdmin() || isStaff();

@@ -21,8 +21,7 @@ export class NotificationService {
       read: false,
       metadata: {
         bookingId: booking.id,
-        bookingRef: booking.bookingId,
-        invoiceUrl: booking.invoiceUrl
+        bookingRef: booking.bookingId
       },
       createdAt: now
     };
